@@ -20,14 +20,14 @@
 #include "spirv.hpp"
 
 #include <algorithm>
-#include <cstdio>
-#include <cstring>
 #include <functional>
 #include <memory>
-#include <sstream>
 #include <stack>
 #include <stdexcept>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -105,16 +105,146 @@ public:
 #define SPIRV_CROSS_DEPRECATED(reason)
 #endif
 
+template <size_t StackSize = 4096, size_t BlockSize = 4096>
+class StringStream
+{
+public:
+	StringStream()
+	{
+		reset();
+	}
+
+	~StringStream()
+	{
+		reset();
+	}
+
+	// Disable copies and moves. Makes it easier to implement, and we don't need it.
+	StringStream(const StringStream &) = delete;
+	void operator=(const StringStream &) = delete;
+
+	template <typename T, typename std::enable_if<!std::is_floating_point<T>::value, int>::type = 0>
+	StringStream &operator<<(const T &t)
+	{
+		auto str = std::to_string(t);
+		append(str.data(), str.size());
+		return *this;
+	}
+
+	// Only overload this to make float/double conversions ambiguous.
+	StringStream &operator<<(uint32_t v)
+	{
+		auto str = std::to_string(v);
+		append(str.data(), str.size());
+		return *this;
+	}
+
+	StringStream &operator<<(char c)
+	{
+		append(&c, 1);
+		return *this;
+	}
+
+	StringStream &operator<<(const std::string &str)
+	{
+		append(str.data(), str.size());
+		return *this;
+	}
+
+	StringStream &operator<<(const char *str)
+	{
+		append(str, strlen(str));
+		return *this;
+	}
+
+	template <size_t N>
+	StringStream &operator<<(const char (&str)[N])
+	{
+		append(str, strlen(str));
+		return *this;
+	}
+
+	std::string str() const
+	{
+		std::string ret;
+		size_t target_size = 0;
+		for (auto &saved : saved_buffers)
+			target_size += saved.offset;
+		target_size += current_buffer.offset;
+		ret.reserve(target_size);
+
+		for (auto &saved : saved_buffers)
+			ret.insert(ret.end(), saved.buffer, saved.buffer + saved.offset);
+		ret.insert(ret.end(), current_buffer.buffer, current_buffer.buffer + current_buffer.offset);
+		return ret;
+	}
+
+	void reset()
+	{
+		for (auto &saved : saved_buffers)
+			if (saved.buffer != stack_buffer)
+				free(saved.buffer);
+		if (current_buffer.buffer != stack_buffer)
+			free(current_buffer.buffer);
+
+		saved_buffers.clear();
+		current_buffer.buffer = stack_buffer;
+		current_buffer.offset = 0;
+		current_buffer.size = sizeof(stack_buffer);
+	}
+
+private:
+	struct Buffer
+	{
+		char *buffer;
+		size_t offset;
+		size_t size;
+	};
+	Buffer current_buffer = {};
+	char stack_buffer[StackSize];
+	std::vector<Buffer> saved_buffers;
+
+	void append(const char *str, size_t len)
+	{
+		size_t avail = current_buffer.size - current_buffer.offset;
+		if (avail < len)
+		{
+			if (avail > 0)
+			{
+				memcpy(current_buffer.buffer + current_buffer.offset, str, avail);
+				str += avail;
+				len -= avail;
+				current_buffer.offset += avail;
+			}
+
+			saved_buffers.push_back(current_buffer);
+			size_t target_size = len > BlockSize ? len : BlockSize;
+			current_buffer.buffer = static_cast<char *>(malloc(target_size));
+			if (!current_buffer.buffer)
+				SPIRV_CROSS_THROW("Out of memory.");
+
+			memcpy(current_buffer.buffer, str, len);
+			current_buffer.offset = len;
+			current_buffer.size = target_size;
+		}
+		else
+		{
+			memcpy(current_buffer.buffer + current_buffer.offset, str, len);
+			current_buffer.offset += len;
+		}
+	}
+};
+
 namespace inner
 {
 template <typename T>
-void join_helper(std::ostringstream &stream, T &&t)
+void join_helper(StringStream<> &stream, T &&t)
 {
 	stream << std::forward<T>(t);
 }
 
 template <typename T, typename... Ts>
-void join_helper(std::ostringstream &stream, T &&t, Ts &&... ts)
+void join_helper(StringStream<> &stream, T &&t, Ts &&... ts)
 {
 	stream << std::forward<T>(t);
 	join_helper(stream, std::forward<Ts>(ts)...);
@@ -244,21 +374,21 @@ private:
 template <typename... Ts>
 std::string join(Ts &&... ts)
 {
-	std::ostringstream stream;
+	StringStream<> stream;
 	inner::join_helper(stream, std::forward<Ts>(ts)...);
 	return stream.str();
 }
 
 inline std::string merge(const std::vector<std::string> &list)
 {
-	std::string s;
+	StringStream<> stream;
 	for (auto &elem : list)
 	{
-		s += elem;
+		stream << elem;
 		if (&elem != &list.back())
-			s += ", ";
+			stream << ", ";
 	}
-	return s;
+	return stream.str();
 }
 
 // Make sure we don't accidentally call this with float or doubles with SFINAE.
@@ -1529,6 +1659,6 @@ static inline bool opcode_is_sign_invariant(spv::Op opcode)
 		return false;
 	}
 }
-} // namespace spirv_cross
+} // namespace SPIRV_CROSS_NAMESPACE
 
 #endif

@@ -645,4 +645,4 @@ Meta *ParsedIR::find_meta(uint32_t id)
 		return nullptr;
 }
 
-} // namespace spirv_cross
+} // namespace SPIRV_CROSS_NAMESPACE

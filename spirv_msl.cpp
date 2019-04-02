@@ -659,7 +659,7 @@ string CompilerMSL::compile()
 		next_metal_resource_index_sampler = 0;
 
 		// Move constructor for this type is broken on GCC 4.9 ...
-		buffer = unique_ptr<ostringstream>(new ostringstream());
+		buffer.reset();
 
 		emit_header();
 		emit_specialization_constants_and_structs();
@@ -670,7 +670,7 @@ string CompilerMSL::compile()
 		pass_count++;
 	} while (force_recompile);
 
-	return buffer->str();
+	return buffer.str();
 }
 
 // Register the need to output any custom functions.
@@ -2952,8 +2952,8 @@ void CompilerMSL::emit_specialization_constants_and_structs()
 				// TODO: This can be expressed as a [[threads_per_threadgroup]] input semantic, but we need to know
 				// the work group size at compile time in SPIR-V, and [[threads_per_threadgroup]] would need to be passed around as a global.
 				// The work group size may be a specialization constant.
-				statement("constant uint3 ", builtin_to_glsl(BuiltInWorkgroupSize, StorageClassWorkgroup), " [[maybe_unused]] = ",
-				          constant_expression(get<SPIRConstant>(workgroup_size_id)), ";");
+				statement("constant uint3 ", builtin_to_glsl(BuiltInWorkgroupSize, StorageClassWorkgroup),
+				          " [[maybe_unused]] = ", constant_expression(get<SPIRConstant>(workgroup_size_id)), ";");
 				emitted = true;
 			}
 			else if (c.specialization)

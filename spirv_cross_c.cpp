@@ -34,9 +34,9 @@
 #include "spirv_reflect.hpp"
 #endif
 #include "spirv_parser.hpp"
-#include <string.h>
 #include <memory>
 #include <new>
+#include <string.h>
 
 // clang-format off
 

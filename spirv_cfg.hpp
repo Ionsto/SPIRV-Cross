@@ -144,6 +144,6 @@ private:
 	const CFG &cfg;
 	uint32_t dominator = 0;
 };
-} // namespace spirv_cross
+} // namespace SPIRV_CROSS_NAMESPACE
 
 #endif

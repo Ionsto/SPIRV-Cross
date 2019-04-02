@@ -82,6 +82,6 @@ private:
 
 	std::string interface_name;
 };
-} // namespace spirv_cross
+} // namespace SPIRV_CROSS_NAMESPACE
 
 #endif

@@ -1118,4 +1118,4 @@ void Parser::make_constant_null(uint32_t id, uint32_t type)
 	}
 }
 
-} // namespace spirv_cross
+} // namespace SPIRV_CROSS_NAMESPACE

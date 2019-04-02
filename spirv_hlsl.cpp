@@ -4664,7 +4664,7 @@ string CompilerHLSL::compile()
 		reset();
 
 		// Move constructor for this type is broken on GCC 4.9 ...
-		buffer = unique_ptr<ostringstream>(new ostringstream());
+		buffer.reset();
 
 		emit_header();
 		emit_resources();
@@ -4678,7 +4678,7 @@ string CompilerHLSL::compile()
 	// Entry point in HLSL is always main() for the time being.
 	get_entry_point().name = "main";
 
-	return buffer->str();
+	return buffer.str();
 }
 
 void CompilerHLSL::emit_block_hints(const SPIRBlock &block)

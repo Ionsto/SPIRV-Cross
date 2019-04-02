@@ -181,6 +181,6 @@ private:
 	std::string empty_string;
 	Bitset cleared_bitset;
 };
-} // namespace spirv_cross
+} // namespace SPIRV_CROSS_NAMESPACE
 
 #endif

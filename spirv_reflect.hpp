@@ -79,6 +79,6 @@ private:
 	std::shared_ptr<simple_json::Stream> json_stream;
 };
 
-} // namespace spirv_cross
+} // namespace SPIRV_CROSS_NAMESPACE
 
 #endif

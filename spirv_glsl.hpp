@@ -17,9 +17,8 @@
 #ifndef SPIRV_CROSS_GLSL_HPP
 #define SPIRV_CROSS_GLSL_HPP
 
-#include "spirv_cross.hpp"
 #include "GLSL.std.450.h"
-#include <sstream>
+#include "spirv_cross.hpp"
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -260,19 +259,19 @@ protected:
 	virtual void emit_uniform(const SPIRVariable &var);
 	virtual std::string unpack_expression_type(std::string expr_str, const SPIRType &type, uint32_t packed_type_id);
 
-	std::unique_ptr<std::ostringstream> buffer;
+	StringStream<> buffer;
 
 	template <typename T>
 	inline void statement_inner(T &&t)
 	{
-		(*buffer) << std::forward<T>(t);
+		buffer << std::forward<T>(t);
 		statement_count++;
 	}
 
 	template <typename T, typename... Ts>
 	inline void statement_inner(T &&t, Ts &&... ts)
 	{
-		(*buffer) << std::forward<T>(t);
+		buffer << std::forward<T>(t);
 		statement_count++;
 		statement_inner(std::forward<Ts>(ts)...);
 	}
@@ -293,9 +292,9 @@ protected:
 		else
 		{
 			for (uint32_t i = 0; i < indent; i++)
-				(*buffer) << "    ";
+				buffer << "    ";
 			statement_inner(std::forward<Ts>(ts)...);
-			(*buffer) << '\n';
+			buffer << '\n';
 		}
 	}
 
@@ -434,8 +433,8 @@ protected:
 	                             SPIRType::BaseType input_type, SPIRType::BaseType expected_result_type);
 	void emit_binary_func_op_cast(uint32_t result_type, uint32_t result_id, uint32_t op0, uint32_t op1, const char *op,
 	                              SPIRType::BaseType input_type, bool skip_cast_if_equal_type);
-	void emit_trinary_func_op_cast(uint32_t result_type, uint32_t result_id, uint32_t op0, uint32_t op1, uint32_t op2, const char *op,
-	                               SPIRType::BaseType input_type);
+	void emit_trinary_func_op_cast(uint32_t result_type, uint32_t result_id, uint32_t op0, uint32_t op1, uint32_t op2,
+	                               const char *op, SPIRType::BaseType input_type);
 
 	void emit_unary_func_op(uint32_t result_type, uint32_t result_id, uint32_t op0, const char *op);
 	void emit_unrolled_unary_op(uint32_t result_type, uint32_t result_id, uint32_t operand, const char *op);
@@ -650,6 +649,6 @@ protected:
 private:
 	void init();
 };
-} // namespace spirv_cross
+} // namespace SPIRV_CROSS_NAMESPACE
 
 #endif

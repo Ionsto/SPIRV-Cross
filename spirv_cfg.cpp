@@ -223,4 +223,4 @@ void DominatorBuilder::lift_continue_block_dominator()
 	if (back_edge_dominator)
 		dominator = cfg.get_function().entry_block;
 }
-} // namespace spirv_cross
+} // namespace SPIRV_CROSS_NAMESPACE

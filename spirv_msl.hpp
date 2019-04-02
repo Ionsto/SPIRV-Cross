@@ -595,6 +595,6 @@ protected:
 		SortAspect sort_aspect;
 	};
 };
-} // namespace spirv_cross
+} // namespace SPIRV_CROSS_NAMESPACE
 
 #endif

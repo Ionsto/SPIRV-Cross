@@ -90,6 +90,6 @@ private:
 	bool variable_storage_is_aliased(const SPIRVariable &v) const;
 	void make_constant_null(uint32_t id, uint32_t type);
 };
-} // namespace spirv_cross
+} // namespace SPIRV_CROSS_NAMESPACE
 
 #endif
