@@ -30,7 +30,7 @@ static const uint32_t k_unknown_component = ~0u;
 
 static const uint32_t k_aux_mbr_idx_swizzle_const = 0u;
 
-CompilerMSL::CompilerMSL(vector<uint32_t> spirv_)
+CompilerMSL::CompilerMSL(SmallVector<uint32_t> spirv_)
     : CompilerGLSL(move(spirv_))
 {
 }
@@ -423,7 +423,7 @@ void CompilerMSL::emit_entry_point_declarations()
 		if (type.basetype == SPIRType::Sampler)
 			add_resource_name(samp.first);
 
-		vector<string> args;
+		SmallVector<string> args;
 		auto &s = samp.second;
 
 		if (s.coord != MSL_SAMPLER_COORD_NORMALIZED)
@@ -1823,7 +1823,7 @@ void CompilerMSL::fix_up_interface_member_indices(StorageClass storage, uint32_t
 uint32_t CompilerMSL::add_interface_block(StorageClass storage, bool patch)
 {
 	// Accumulate the variables that should appear in the interface struct
-	vector<SPIRVariable *> vars;
+	SmallVector<SPIRVariable *> vars;
 	bool incl_builtins = (storage == StorageClassOutput || is_tessellation_shader());
 
 	ir.for_each_typed_id<SPIRVariable>([&](uint32_t var_id, SPIRVariable &var) {
@@ -3080,7 +3080,7 @@ bool CompilerMSL::emit_tessellation_access_chain(const uint32_t *ops, uint32_t l
 	     get_variable_data_type(*var).basetype == SPIRType::Struct))
 	{
 		AccessChainMeta meta;
-		std::vector<uint32_t> indices;
+		SmallVector<uint32_t> indices;
 		uint32_t next_id = ir.increase_bound_by(2);
 
 		indices.reserve(length - 3 + 1);
@@ -5663,7 +5663,7 @@ void CompilerMSL::entry_point_args_discrete_descriptors(string &ep_args)
 		uint32_t index;
 	};
 
-	vector<Resource> resources;
+	SmallVector<Resource> resources;
 
 	ir.for_each_typed_id<SPIRVariable>([&](uint32_t, SPIRVariable &var) {
 		if ((var.storage == StorageClassUniform || var.storage == StorageClassUniformConstant ||
@@ -7379,7 +7379,7 @@ void CompilerMSL::MemberSorter::sort()
 	// Create a temporary array of consecutive member indices and sort it based on how
 	// the members should be reordered, based on builtin and sorting aspect meta info.
 	size_t mbr_cnt = type.member_types.size();
-	vector<uint32_t> mbr_idxs(mbr_cnt);
+	SmallVector<uint32_t> mbr_idxs(mbr_cnt);
 	iota(mbr_idxs.begin(), mbr_idxs.end(), 0); // Fill with consecutive indices
 	std::sort(mbr_idxs.begin(), mbr_idxs.end(), *this); // Sort member indices based on sorting aspect
 
@@ -7573,7 +7573,7 @@ void CompilerMSL::analyze_argument_buffers()
 		SPIRType::BaseType basetype;
 		uint32_t index;
 	};
-	vector<Resource> resources_in_set[kMaxArgumentBuffers];
+	SmallVector<Resource> resources_in_set[kMaxArgumentBuffers];
 
 	ir.for_each_typed_id<SPIRVariable>([&](uint32_t self, SPIRVariable &var) {
 		if ((var.storage == StorageClassUniform || var.storage == StorageClassUniformConstant ||

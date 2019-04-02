@@ -133,15 +133,15 @@ public:
 		} fragment;
 	};
 
-	void remap_pixel_local_storage(std::vector<PlsRemap> inputs, std::vector<PlsRemap> outputs)
+	void remap_pixel_local_storage(SmallVector<PlsRemap> inputs, SmallVector<PlsRemap> outputs)
 	{
 		pls_inputs = std::move(inputs);
 		pls_outputs = std::move(outputs);
 		remap_pls_variables();
 	}
 
-	explicit CompilerGLSL(std::vector<uint32_t> spirv_)
-	    : Compiler(move(spirv_))
+	explicit CompilerGLSL(SmallVector<uint32_t> spirv_)
+	    : Compiler(std::move(spirv_))
 	{
 		init();
 	}
@@ -229,7 +229,7 @@ protected:
 	virtual void emit_spv_amd_gcn_shader_op(uint32_t result_type, uint32_t result_id, uint32_t op, const uint32_t *args,
 	                                        uint32_t count);
 	virtual void emit_header();
-	void build_workgroup_size(std::vector<std::string> &arguments, const SpecializationConstant &x,
+	void build_workgroup_size(SmallVector<std::string> &arguments, const SpecializationConstant &x,
 	                          const SpecializationConstant &y, const SpecializationConstant &z);
 
 	virtual void emit_sampled_image_op(uint32_t result_type, uint32_t result_id, uint32_t image_id, uint32_t samp_id);
@@ -310,7 +310,7 @@ protected:
 	// Used for implementing continue blocks where
 	// we want to obtain a list of statements we can merge
 	// on a single line separated by comma.
-	std::vector<std::string> *redirect_statement = nullptr;
+	SmallVector<std::string> *redirect_statement = nullptr;
 	const SPIRBlock *current_continue_block = nullptr;
 
 	void begin_scope();
@@ -402,7 +402,7 @@ protected:
 	void emit_interface_block(const SPIRVariable &type);
 	void emit_flattened_io_block(const SPIRVariable &var, const char *qual);
 	void emit_block_chain(SPIRBlock &block);
-	void emit_hoisted_temporaries(std::vector<std::pair<uint32_t, uint32_t>> &temporaries);
+	void emit_hoisted_temporaries(SmallVector<std::pair<uint32_t, uint32_t>> &temporaries);
 	std::string constant_value_macro_name(uint32_t id);
 	void emit_constant(const SPIRConstant &constant);
 	void emit_specialization_constant_op(const SPIRConstantOp &constant);
@@ -480,7 +480,7 @@ protected:
 	const char *index_to_swizzle(uint32_t index);
 	std::string remap_swizzle(const SPIRType &result_type, uint32_t input_components, const std::string &expr);
 	std::string declare_temporary(uint32_t type, uint32_t id);
-	void append_global_func_args(const SPIRFunction &func, uint32_t index, std::vector<std::string> &arglist);
+	void append_global_func_args(const SPIRFunction &func, uint32_t index, SmallVector<std::string> &arglist);
 	std::string to_expression(uint32_t id, bool register_expression_read = true);
 	std::string to_enclosed_expression(uint32_t id, bool register_expression_read = true);
 	std::string to_unpacked_expression(uint32_t id, bool register_expression_read = true);
@@ -556,8 +556,8 @@ protected:
 	std::unordered_map<uint32_t, uint32_t> expression_usage_counts;
 	void track_expression_read(uint32_t id);
 
-	std::vector<std::string> forced_extensions;
-	std::vector<std::string> header_lines;
+	SmallVector<std::string> forced_extensions;
+	SmallVector<std::string> header_lines;
 
 	// Used when expressions emit extra opcodes with their own unique IDs,
 	// and we need to reuse the IDs across recompilation loops.
@@ -587,8 +587,8 @@ protected:
 	void register_control_dependent_expression(uint32_t expr);
 
 	// GL_EXT_shader_pixel_local_storage support.
-	std::vector<PlsRemap> pls_inputs;
-	std::vector<PlsRemap> pls_outputs;
+	SmallVector<PlsRemap> pls_inputs;
+	SmallVector<PlsRemap> pls_outputs;
 	std::string pls_decl(const PlsRemap &variable);
 	const char *to_pls_qualifiers_glsl(const SPIRVariable &variable);
 	void emit_pls();

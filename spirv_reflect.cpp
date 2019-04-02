@@ -445,7 +445,7 @@ void CompilerReflection::emit_resources()
 	emit_resources("acceleration_structures", res.acceleration_structures);
 }
 
-void CompilerReflection::emit_resources(const char *tag, const vector<Resource> &resources)
+void CompilerReflection::emit_resources(const char *tag, const SmallVector<Resource> &resources)
 {
 	if (resources.empty())
 	{

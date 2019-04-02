@@ -475,7 +475,7 @@ std::string CompilerGLSL::get_partial_source()
 	return buffer.str();
 }
 
-void CompilerGLSL::build_workgroup_size(vector<string> &arguments, const SpecializationConstant &wg_x,
+void CompilerGLSL::build_workgroup_size(SmallVector<string> &arguments, const SpecializationConstant &wg_x,
                                         const SpecializationConstant &wg_y, const SpecializationConstant &wg_z)
 {
 	auto &execution = get_entry_point();
@@ -572,8 +572,8 @@ void CompilerGLSL::emit_header()
 	for (auto &header : header_lines)
 		statement(header);
 
-	vector<string> inputs;
-	vector<string> outputs;
+	SmallVector<string> inputs;
+	SmallVector<string> outputs;
 
 	switch (execution.model)
 	{
@@ -797,7 +797,7 @@ string CompilerGLSL::layout_for_member(const SPIRType &type, uint32_t index)
 		return "";
 	auto &dec = memb[index];
 
-	vector<string> attr;
+	SmallVector<string> attr;
 
 	// We can only apply layouts on members in block interfaces.
 	// This is a bit problematic because in SPIR-V decorations are applied on the struct types directly.
@@ -1293,7 +1293,7 @@ string CompilerGLSL::layout_for_variable(const SPIRVariable &var)
 	if (is_legacy())
 		return "";
 
-	vector<string> attr;
+	SmallVector<string> attr;
 
 	auto &dec = ir.meta[var.self].decoration;
 	auto &type = get<SPIRType>(var.basetype);
@@ -2324,7 +2324,7 @@ void CompilerGLSL::emit_resources()
 
 		if ((wg_x.id != 0) || (wg_y.id != 0) || (wg_z.id != 0))
 		{
-			vector<string> inputs;
+			SmallVector<string> inputs;
 			build_workgroup_size(inputs, wg_x, wg_y, wg_z);
 			statement("layout(", merge(inputs), ") in;");
 			statement("");
@@ -4277,7 +4277,7 @@ void CompilerGLSL::emit_texture_op(const Instruction &i)
 	auto op = static_cast<Op>(i.op);
 	uint32_t length = i.length;
 
-	vector<uint32_t> inherited_expressions;
+	SmallVector<uint32_t> inherited_expressions;
 
 	uint32_t result_type = ops[0];
 	uint32_t id = ops[1];
@@ -7292,7 +7292,7 @@ void CompilerGLSL::emit_instruction(const Instruction &instruction)
 			register_impure_function_call();
 
 		string funexpr;
-		vector<string> arglist;
+		SmallVector<string> arglist;
 		funexpr += to_name(func) + "(";
 
 		if (emit_return_value_as_argument)
@@ -7658,7 +7658,7 @@ void CompilerGLSL::emit_instruction(const Instruction &instruction)
 			trivial_forward = !expression_is_forwarded(vec0) && !expression_is_forwarded(vec1);
 
 			// Constructor style and shuffling from two different vectors.
-			vector<string> args;
+			SmallVector<string> args;
 			for (uint32_t i = 0; i < length; i++)
 			{
 				if (elems[i] == 0xffffffffu)
@@ -9207,7 +9207,7 @@ void CompilerGLSL::emit_instruction(const Instruction &instruction)
 // access to shader input content from within a function (eg. Metal). Each additional
 // function args uses the name of the global variable. Function nesting will modify the
 // functions and function calls all the way up the nesting chain.
-void CompilerGLSL::append_global_func_args(const SPIRFunction &func, uint32_t index, vector<string> &arglist)
+void CompilerGLSL::append_global_func_args(const SPIRFunction &func, uint32_t index, SmallVector<string> &arglist)
 {
 	auto &args = func.arguments;
 	uint32_t arg_cnt = uint32_t(args.size());
@@ -10042,7 +10042,7 @@ void CompilerGLSL::emit_function_prototype(SPIRFunction &func, const Bitset &ret
 		decl += to_name(func.self);
 
 	decl += "(";
-	vector<string> arglist;
+	SmallVector<string> arglist;
 	for (auto &arg : func.arguments)
 	{
 		// Do not pass in separate images or samplers if we're remapping
@@ -10500,7 +10500,7 @@ string CompilerGLSL::emit_continue_block(uint32_t continue_block, bool follow_tr
 	// if we have to emit temporaries.
 	current_continue_block = block;
 
-	vector<string> statements;
+	SmallVector<string> statements;
 
 	// Capture all statements into our list.
 	auto *old = redirect_statement;
@@ -10823,7 +10823,7 @@ void CompilerGLSL::flush_undeclared_variables(SPIRBlock &block)
 		flush_variable_declaration(v);
 }
 
-void CompilerGLSL::emit_hoisted_temporaries(vector<pair<uint32_t, uint32_t>> &temporaries)
+void CompilerGLSL::emit_hoisted_temporaries(SmallVector<pair<uint32_t, uint32_t>> &temporaries)
 {
 	// If we need to force temporaries for certain IDs due to continue blocks, do it before starting loop header.
 	// Need to sort these to ensure that reference output is stable.
