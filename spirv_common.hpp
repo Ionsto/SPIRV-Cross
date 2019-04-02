@@ -126,16 +126,16 @@ public:
 	template <typename T, typename std::enable_if<!std::is_floating_point<T>::value, int>::type = 0>
 	StringStream &operator<<(const T &t)
 	{
-		auto str = std::to_string(t);
-		append(str.data(), str.size());
+		auto s = std::to_string(t);
+		append(s.data(), s.size());
 		return *this;
 	}
 
 	// Only overload this to make float/double conversions ambiguous.
 	StringStream &operator<<(uint32_t v)
 	{
-		auto str = std::to_string(v);
-		append(str.data(), str.size());
+		auto s = std::to_string(v);
+		append(s.data(), s.size());
 		return *this;
 	}
 
@@ -151,16 +151,16 @@ public:
 		return *this;
 	}
 
-	StringStream &operator<<(const char *str)
+	StringStream &operator<<(const char *s)
 	{
-		append(str, strlen(str));
+		append(s, strlen(s));
 		return *this;
 	}
 
 	template <size_t N>
-	StringStream &operator<<(const char (&str)[N])
+	StringStream &operator<<(const char (&s)[N])
 	{
-		append(str, strlen(str));
+		append(s, strlen(s));
 		return *this;
 	}
 
