@@ -31,7 +31,13 @@ namespace SPIRV_CROSS_NAMESPACE
 
 class ParsedIR
 {
+private:
+	// This must be destroyed after the "ids" vector.
+	std::shared_ptr<ObjectPoolGroup> pool_group;
+
 public:
+	ParsedIR();
+
 	// Resizes ids, meta and block_meta.
 	void set_id_bounds(uint32_t bounds);
 

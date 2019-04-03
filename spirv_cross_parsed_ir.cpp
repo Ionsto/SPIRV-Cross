@@ -23,9 +23,37 @@ using namespace spv;
 
 namespace SPIRV_CROSS_NAMESPACE
 {
+ParsedIR::ParsedIR()
+{
+	// If we move ParsedIR, we need to make sure the pointer stays fixed since the child Variant objects consume a pointer to this group,
+	// so need an extra pointer here.
+
+	// FIXME: Using a shared pointer here allows us to have default copy construction, however,
+	// we now have a hazard if the same ParsedIR object is copied into multiple Compilers and those compilers then run in parallel.
+	// This shouldn't really be a thing, but we should have a way to avoid this scenario.
+	// A custom copy-constructor for ParsedIR is the solution here.
+	pool_group = make_shared<ObjectPoolGroup>();
+
+	pool_group->pools[TypeType].reset(new ObjectPool<SPIRType>);
+	pool_group->pools[TypeVariable].reset(new ObjectPool<SPIRVariable>);
+	pool_group->pools[TypeConstant].reset(new ObjectPool<SPIRConstant>);
+	pool_group->pools[TypeFunction].reset(new ObjectPool<SPIRFunction>);
+	pool_group->pools[TypeFunctionPrototype].reset(new ObjectPool<SPIRFunctionPrototype>);
+	pool_group->pools[TypeBlock].reset(new ObjectPool<SPIRBlock>);
+	pool_group->pools[TypeExtension].reset(new ObjectPool<SPIRExtension>);
+	pool_group->pools[TypeExpression].reset(new ObjectPool<SPIRExpression>);
+	pool_group->pools[TypeConstantOp].reset(new ObjectPool<SPIRConstantOp>);
+	pool_group->pools[TypeCombinedImageSampler].reset(new ObjectPool<SPIRCombinedImageSampler>);
+	pool_group->pools[TypeAccessChain].reset(new ObjectPool<SPIRAccessChain>);
+	pool_group->pools[TypeUndef].reset(new ObjectPool<SPIRUndef>);
+}
+
 void ParsedIR::set_id_bounds(uint32_t bounds)
 {
-	ids.resize(bounds);
+	ids.reserve(bounds);
+	while (ids.size() < bounds)
+		ids.emplace_back(pool_group.get());
+
 	block_meta.resize(bounds);
 }
 
@@ -571,7 +599,11 @@ uint32_t ParsedIR::increase_bound_by(uint32_t incr_amount)
 {
 	auto curr_bound = ids.size();
 	auto new_bound = curr_bound + incr_amount;
-	ids.resize(new_bound);
+
+	ids.reserve(ids.size() + incr_amount);
+	for (uint32_t i = 0; i < incr_amount; i++)
+		ids.emplace_back(pool_group.get());
+
 	block_meta.resize(new_bound);
 	return uint32_t(curr_bound);
 }

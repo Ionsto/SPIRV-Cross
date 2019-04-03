@@ -128,92 +128,11 @@ public:
 	}
 };
 
-// Simple vector which supports up to N elements inline, without malloc/free.
-// We use a lot of throwaway vectors all over the place which triggers allocations.
-template <typename T, size_t N = 8>
-class SmallVector
+// An immutable version of SmallVector which erases type information about storage.
+template <typename T>
+class VectorView
 {
 public:
-	SmallVector()
-	{
-		ptr = stack_storage.data();
-		buffer_capacity = N;
-	}
-
-	SmallVector(const T *arg_list_begin, const T *arg_list_end)
-	    : SmallVector()
-	{
-		auto count = size_t(arg_list_end - arg_list_begin);
-		reserve(count);
-		for (size_t i = 0; i < count; i++, arg_list_begin++)
-			new (&ptr[i]) T(*arg_list_begin);
-		buffer_size = count;
-	}
-
-	SmallVector(SmallVector &&other) SPIRV_CROSS_NOEXCEPT : SmallVector()
-	{
-		*this = std::move(other);
-	}
-
-	SmallVector &operator=(SmallVector &&other) SPIRV_CROSS_NOEXCEPT
-	{
-		clear();
-		if (other.ptr != other.stack_storage.data())
-		{
-			// Pilfer allocated pointer.
-			if (ptr != stack_storage.data())
-				free(ptr);
-			ptr = other.ptr;
-			buffer_size = other.buffer_size;
-			buffer_capacity = other.buffer_capacity;
-			other.ptr = nullptr;
-			other.buffer_size = 0;
-			other.buffer_capacity = 0;
-		}
-		else
-		{
-			// Need to move the stack contents individually.
-			reserve(other.buffer_size);
-			for (size_t i = 0; i < other.buffer_size; i++)
-			{
-				new (&ptr[i]) T(std::move(other.ptr[i]));
-				other.ptr[i].~T();
-			}
-			buffer_size = other.buffer_size;
-			other.buffer_size = 0;
-		}
-		return *this;
-	}
-
-	SmallVector(const SmallVector &other)
-	    : SmallVector()
-	{
-		*this = other;
-	}
-
-	SmallVector &operator=(const SmallVector &other)
-	{
-		clear();
-		reserve(other.buffer_size);
-		for (size_t i = 0; i < other.buffer_size; i++)
-			new (&ptr[i]) T(other.ptr[i]);
-		buffer_size = other.buffer_size;
-		return *this;
-	}
-
-	explicit SmallVector(size_t count)
-	    : SmallVector()
-	{
-		resize(count);
-	}
-
-	~SmallVector()
-	{
-		clear();
-		if (ptr != stack_storage.data())
-			free(ptr);
-	}
-
 	T &operator[](size_t i)
 	{
 		return ptr[i];
@@ -284,33 +203,136 @@ public:
 		return ptr[buffer_size - 1];
 	}
 
+	// Avoid sliced copies. Base class should only be read as a reference.
+	VectorView(const VectorView &) = delete;
+	void operator=(const VectorView &) = delete;
+
+protected:
+	VectorView() = default;
+	T *ptr = nullptr;
+	size_t buffer_size = 0;
+};
+
+// Simple vector which supports up to N elements inline, without malloc/free.
+// We use a lot of throwaway vectors all over the place which triggers allocations.
+// This class only implements the subset of std::vector we need in SPIRV-Cross.
+// It is *NOT* a drop-in replacement.
+template <typename T, size_t N = 8>
+class SmallVector : public VectorView<T>
+{
+public:
+	SmallVector()
+	{
+		this->ptr = stack_storage.data();
+		buffer_capacity = N;
+	}
+
+	SmallVector(const T *arg_list_begin, const T *arg_list_end)
+	    : SmallVector()
+	{
+		auto count = size_t(arg_list_end - arg_list_begin);
+		reserve(count);
+		for (size_t i = 0; i < count; i++, arg_list_begin++)
+			new (&this->ptr[i]) T(*arg_list_begin);
+		this->buffer_size = count;
+	}
+
+	SmallVector(SmallVector &&other) SPIRV_CROSS_NOEXCEPT : SmallVector()
+	{
+		*this = std::move(other);
+	}
+
+	SmallVector &operator=(SmallVector &&other) SPIRV_CROSS_NOEXCEPT
+	{
+		clear();
+		if (other.ptr != other.stack_storage.data())
+		{
+			// Pilfer allocated pointer.
+			if (this->ptr != stack_storage.data())
+				free(this->ptr);
+			this->ptr = other.ptr;
+			this->buffer_size = other.buffer_size;
+			buffer_capacity = other.buffer_capacity;
+			other.ptr = nullptr;
+			other.buffer_size = 0;
+			other.buffer_capacity = 0;
+		}
+		else
+		{
+			// Need to move the stack contents individually.
+			reserve(other.buffer_size);
+			for (size_t i = 0; i < other.buffer_size; i++)
+			{
+				new (&this->ptr[i]) T(std::move(other.ptr[i]));
+				other.ptr[i].~T();
+			}
+			this->buffer_size = other.buffer_size;
+			other.buffer_size = 0;
+		}
+		return *this;
+	}
+
+	SmallVector(const SmallVector &other)
+	    : SmallVector()
+	{
+		*this = other;
+	}
+
+	SmallVector &operator=(const SmallVector &other)
+	{
+		clear();
+		reserve(other.buffer_size);
+		for (size_t i = 0; i < other.buffer_size; i++)
+			new (&this->ptr[i]) T(other.ptr[i]);
+		this->buffer_size = other.buffer_size;
+		return *this;
+	}
+
+	explicit SmallVector(size_t count)
+	    : SmallVector()
+	{
+		resize(count);
+	}
+
+	~SmallVector()
+	{
+		clear();
+		if (this->ptr != stack_storage.data())
+			free(this->ptr);
+	}
+
 	void clear()
 	{
-		for (size_t i = 0; i < buffer_size; i++)
-			ptr[i].~T();
-		buffer_size = 0;
+		for (size_t i = 0; i < this->buffer_size; i++)
+			this->ptr[i].~T();
+		this->buffer_size = 0;
 	}
 
 	void push_back(const T &t)
 	{
-		reserve(buffer_size + 1);
-		new (&ptr[buffer_size]) T(t);
-		buffer_size++;
+		reserve(this->buffer_size + 1);
+		new (&this->ptr[this->buffer_size]) T(t);
+		this->buffer_size++;
 	}
 
 	void push_back(T &&t)
 	{
-		reserve(buffer_size + 1);
-		new (&ptr[buffer_size]) T(std::move(t));
-		buffer_size++;
+		reserve(this->buffer_size + 1);
+		new (&this->ptr[this->buffer_size]) T(std::move(t));
+		this->buffer_size++;
+	}
+
+	void pop_back()
+	{
+		resize(this->buffer_size - 1);
 	}
 
 	template <typename... Ts>
 	void emplace_back(Ts &&... ts)
 	{
-		reserve(buffer_size + 1);
-		new (&ptr[buffer_size]) T(std::forward<Ts>(ts)...);
-		buffer_size++;
+		reserve(this->buffer_size + 1);
+		new (&this->ptr[this->buffer_size]) T(std::forward<Ts>(ts)...);
+		this->buffer_size++;
 	}
 
 	void reserve(size_t count)
@@ -333,32 +355,32 @@ public:
 				SPIRV_CROSS_THROW("Out of memory.");
 
 			// In case for some reason two allocations both come from same stack.
-			if (new_buffer != ptr)
+			if (new_buffer != this->ptr)
 			{
 				// We don't deal with types which can throw in move constructor.
-				for (size_t i = 0; i < buffer_size; i++)
+				for (size_t i = 0; i < this->buffer_size; i++)
 				{
-					new (&new_buffer[i]) T(std::move(ptr[i]));
-					ptr[i].~T();
+					new (&new_buffer[i]) T(std::move(this->ptr[i]));
+					this->ptr[i].~T();
 				}
 			}
 
-			if (ptr != stack_storage.data())
-				free(ptr);
-			ptr = new_buffer;
+			if (this->ptr != stack_storage.data())
+				free(this->ptr);
+			this->ptr = new_buffer;
 			buffer_capacity = target_capacity;
 		}
 	}
 
 	void insert(T *itr, const T *insert_begin, const T *insert_end)
 	{
-		if (itr == end())
+		if (itr == this->end())
 		{
 			auto count = size_t(insert_end - insert_begin);
-			reserve(buffer_size + count);
+			reserve(this->buffer_size + count);
 			for (size_t i = 0; i < count; i++, insert_begin++)
-				new (&ptr[buffer_size + i]) T(*insert_begin);
-			buffer_size += count;
+				new (&this->ptr[this->buffer_size + i]) T(*insert_begin);
+			this->buffer_size += count;
 		}
 		else
 			SPIRV_CROSS_THROW("Mid-insert not implemented.");
@@ -366,47 +388,112 @@ public:
 
 	T *erase(T *itr)
 	{
-		std::move(itr + 1, end(), itr);
-		ptr[--buffer_size].~T();
+		std::move(itr + 1, this->end(), itr);
+		this->ptr[--this->buffer_size].~T();
 		return itr;
 	}
 
 	void erase(T *start_erase, T *end_erase)
 	{
-		if (end_erase != end())
+		if (end_erase != this->end())
 			SPIRV_CROSS_THROW("Mid-erase not implemented.");
-		resize(size_t(start_erase - begin()));
+		resize(size_t(start_erase - this->begin()));
 	}
 
 	void resize(size_t new_size)
 	{
-		if (new_size < buffer_size)
+		if (new_size < this->buffer_size)
 		{
-			for (size_t i = new_size; i < buffer_size; i++)
-				ptr[i].~T();
+			for (size_t i = new_size; i < this->buffer_size; i++)
+				this->ptr[i].~T();
 		}
-		else if (new_size > buffer_size)
+		else if (new_size > this->buffer_size)
 		{
 			reserve(new_size);
-			for (size_t i = buffer_size; i < new_size; i++)
-				new (&ptr[i]) T();
+			for (size_t i = this->buffer_size; i < new_size; i++)
+				new (&this->ptr[i]) T();
 		}
 
-		buffer_size = new_size;
+		this->buffer_size = new_size;
 	}
 
 private:
-	T *ptr = nullptr;
-	size_t buffer_size = 0;
 	size_t buffer_capacity = 0;
 	AlignedBuffer<T, N> stack_storage;
 };
 
 // A vector without stack storage.
-// Could also be a typedef to std::vector,
+// Could also be a typedef-ed to std::vector,
 // but might as well use the one we have.
 template <typename T>
 using Vector = SmallVector<T, 0>;
+
+// An object pool which we use for allocating IVariant-derived objects.
+// We know we are going to allocate a bunch of objects of each type,
+// so amortize the mallocs.
+class ObjectPoolBase
+{
+public:
+	virtual ~ObjectPoolBase() = default;
+	virtual void free_opaque(void *ptr) = 0;
+};
+
+template <typename T>
+class ObjectPool : public ObjectPoolBase
+{
+public:
+	template<typename... P>
+	T *allocate(P &&... p)
+	{
+		if (vacants.empty())
+		{
+			unsigned num_objects = 64u << memory.size();
+			T *ptr = static_cast<T *>(malloc(num_objects * sizeof(T)));
+			if (!ptr)
+				return nullptr;
+
+			for (unsigned i = 0; i < num_objects; i++)
+				vacants.push_back(&ptr[i]);
+
+			memory.emplace_back(ptr);
+		}
+
+		T *ptr = vacants.back();
+		vacants.pop_back();
+		new (ptr) T(std::forward<P>(p)...);
+		return ptr;
+	}
+
+	void free(T *ptr)
+	{
+		ptr->~T();
+		vacants.push_back(ptr);
+	}
+
+	void free_opaque(void *ptr) override
+	{
+		free(static_cast<T *>(ptr));
+	}
+
+	void clear()
+	{
+		vacants.clear();
+		memory.clear();
+	}
+
+protected:
+	Vector<T *> vacants;
+
+	struct MallocDeleter
+	{
+		void operator()(T *ptr)
+		{
+			::free(ptr);
+		}
+	};
+
+	SmallVector<std::unique_ptr<T, MallocDeleter>> memory;
+};
 
 template <size_t StackSize = 4096, size_t BlockSize = 4096>
 class StringStream
@@ -773,15 +860,14 @@ struct Instruction
 struct IVariant
 {
 	virtual ~IVariant() = default;
-	virtual std::unique_ptr<IVariant> clone() = 0;
-
+	virtual IVariant *clone(ObjectPoolBase *pool) = 0;
 	uint32_t self = 0;
 };
 
-#define SPIRV_CROSS_DECLARE_CLONE(T)                    \
-	std::unique_ptr<IVariant> clone() override          \
-	{                                                   \
-		return std::unique_ptr<IVariant>(new T(*this)); \
+#define SPIRV_CROSS_DECLARE_CLONE(T)                                \
+	IVariant *clone(ObjectPoolBase *pool) override                  \
+	{                                                               \
+		return static_cast<ObjectPool<T> *>(pool)->allocate(*this); \
 	}
 
 enum Types
@@ -1693,11 +1779,25 @@ struct SPIRConstant : IVariant
 	SPIRV_CROSS_DECLARE_CLONE(SPIRConstant)
 };
 
+// Variants have a very specific allocation scheme.
+struct ObjectPoolGroup
+{
+	std::unique_ptr<ObjectPoolBase> pools[TypeCount];
+};
+
 class Variant
 {
 public:
-	// MSVC 2013 workaround, we shouldn't need these constructors.
-	Variant() = default;
+	explicit Variant(ObjectPoolGroup *group_)
+		: group(group_)
+	{
+	}
+
+	~Variant()
+	{
+		if (holder)
+			group->pools[type]->free_opaque(holder);
+	}
 
 	// Marking custom move constructor as noexcept is important.
 	Variant(Variant &&other) SPIRV_CROSS_NOEXCEPT
@@ -1715,9 +1815,14 @@ public:
 	{
 		if (this != &other)
 		{
-			holder = std::move(other.holder);
+			if (holder)
+				group->pools[type]->free_opaque(holder);
+			holder = other.holder;
+			group = other.group;
 			type = other.type;
 			allow_type_rewrite = other.allow_type_rewrite;
+
+			other.holder = nullptr;
 			other.type = TypeNone;
 		}
 		return *this;
@@ -1733,22 +1838,35 @@ public:
 #endif
 		if (this != &other)
 		{
-			holder.reset();
+			if (holder)
+				group->pools[type]->free_opaque(holder);
+
 			if (other.holder)
-				holder = other.holder->clone();
+				holder = other.holder->clone(group->pools[other.type].get());
+
 			type = other.type;
 			allow_type_rewrite = other.allow_type_rewrite;
 		}
 		return *this;
 	}
 
-	void set(std::unique_ptr<IVariant> val, Types new_type)
+	void set(IVariant *val, Types new_type)
 	{
-		holder = std::move(val);
+		if (holder)
+			group->pools[type]->free_opaque(holder);
+		holder = val;
 		if (!allow_type_rewrite && type != TypeNone && type != new_type)
 			SPIRV_CROSS_THROW("Overwriting a variant with new type.");
 		type = new_type;
 		allow_type_rewrite = false;
+	}
+
+	template <typename T, typename... Ts>
+	T *allocate_and_set(Types new_type, Ts&&... ts)
+	{
+		T *val = static_cast<ObjectPool<T> &>(*group->pools[new_type]).allocate(std::forward<Ts>(ts)...);
+		set(val, new_type);
+		return val;
 	}
 
 	template <typename T>
@@ -1758,7 +1876,7 @@ public:
 			SPIRV_CROSS_THROW("nullptr");
 		if (static_cast<Types>(T::type) != type)
 			SPIRV_CROSS_THROW("Bad cast");
-		return *static_cast<T *>(holder.get());
+		return *static_cast<T *>(holder);
 	}
 
 	template <typename T>
@@ -1768,7 +1886,7 @@ public:
 			SPIRV_CROSS_THROW("nullptr");
 		if (static_cast<Types>(T::type) != type)
 			SPIRV_CROSS_THROW("Bad cast");
-		return *static_cast<const T *>(holder.get());
+		return *static_cast<const T *>(holder);
 	}
 
 	Types get_type() const
@@ -1788,7 +1906,9 @@ public:
 
 	void reset()
 	{
-		holder.reset();
+		if (holder)
+			group->pools[type]->free_opaque(holder);
+		holder = nullptr;
 		type = TypeNone;
 	}
 
@@ -1798,7 +1918,8 @@ public:
 	}
 
 private:
-	std::unique_ptr<IVariant> holder;
+	ObjectPoolGroup *group = nullptr;
+	IVariant *holder = nullptr;
 	Types type = TypeNone;
 	bool allow_type_rewrite = false;
 };
@@ -1818,9 +1939,7 @@ const T &variant_get(const Variant &var)
 template <typename T, typename... P>
 T &variant_set(Variant &var, P &&... args)
 {
-	auto uptr = std::unique_ptr<T>(new T(std::forward<P>(args)...));
-	auto ptr = uptr.get();
-	var.set(std::move(uptr), static_cast<Types>(T::type));
+	auto *ptr = var.allocate_and_set<T>(static_cast<Types>(T::type), std::forward<P>(args)...);
 	return *ptr;
 }
 
