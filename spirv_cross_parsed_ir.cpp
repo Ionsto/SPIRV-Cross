@@ -44,7 +44,7 @@ ParsedIR::ParsedIR()
 }
 
 ParsedIR::ParsedIR(const ParsedIR &other)
-	: ParsedIR()
+    : ParsedIR()
 {
 	*this = other;
 }

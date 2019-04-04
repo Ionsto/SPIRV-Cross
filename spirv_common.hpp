@@ -442,12 +442,17 @@ template <typename T>
 class ObjectPool : public ObjectPoolBase
 {
 public:
+	explicit ObjectPool(unsigned start_object_count_ = 16)
+	    : start_object_count(start_object_count_)
+	{
+	}
+
 	template <typename... P>
 	T *allocate(P &&... p)
 	{
 		if (vacants.empty())
 		{
-			unsigned num_objects = 16u << memory.size();
+			unsigned num_objects = start_object_count << memory.size();
 			T *ptr = static_cast<T *>(malloc(num_objects * sizeof(T)));
 			if (!ptr)
 				return nullptr;
@@ -493,6 +498,7 @@ protected:
 	};
 
 	SmallVector<std::unique_ptr<T, MallocDeleter>> memory;
+	unsigned start_object_count;
 };
 
 template <size_t StackSize = 4096, size_t BlockSize = 4096>
