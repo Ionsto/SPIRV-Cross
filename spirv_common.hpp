@@ -442,7 +442,7 @@ template <typename T>
 class ObjectPool : public ObjectPoolBase
 {
 public:
-	template<typename... P>
+	template <typename... P>
 	T *allocate(P &&... p)
 	{
 		if (vacants.empty())
@@ -1789,7 +1789,7 @@ class Variant
 {
 public:
 	explicit Variant(ObjectPoolGroup *group_)
-		: group(group_)
+	    : group(group_)
 	{
 	}
 
@@ -1862,7 +1862,7 @@ public:
 	}
 
 	template <typename T, typename... Ts>
-	T *allocate_and_set(Types new_type, Ts&&... ts)
+	T *allocate_and_set(Types new_type, Ts &&... ts)
 	{
 		T *val = static_cast<ObjectPool<T> &>(*group->pools[new_type]).allocate(std::forward<Ts>(ts)...);
 		set(val, new_type);
