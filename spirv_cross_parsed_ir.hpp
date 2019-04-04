@@ -33,10 +33,18 @@ class ParsedIR
 {
 private:
 	// This must be destroyed after the "ids" vector.
-	std::shared_ptr<ObjectPoolGroup> pool_group;
+	std::unique_ptr<ObjectPoolGroup> pool_group;
 
 public:
 	ParsedIR();
+
+	// Due to custom allocations from object pools, we cannot use a default copy constructor.
+	ParsedIR(const ParsedIR &other);
+	ParsedIR &operator=(const ParsedIR &other);
+
+	// Moves are unproblematic.
+	ParsedIR(ParsedIR &&other) = default;
+	ParsedIR &operator=(ParsedIR &&other) = default;
 
 	// Resizes ids, meta and block_meta.
 	void set_id_bounds(uint32_t bounds);

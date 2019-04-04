@@ -447,7 +447,7 @@ public:
 	{
 		if (vacants.empty())
 		{
-			unsigned num_objects = 64u << memory.size();
+			unsigned num_objects = 16u << memory.size();
 			T *ptr = static_cast<T *>(malloc(num_objects * sizeof(T)));
 			if (!ptr)
 				return nullptr;
@@ -1805,10 +1805,9 @@ public:
 		*this = std::move(other);
 	}
 
-	Variant(const Variant &variant)
-	{
-		*this = variant;
-	}
+	// We cannot copy from other variant without our own pool group.
+	// Have to explicitly copy.
+	Variant(const Variant &variant) = delete;
 
 	// Marking custom move constructor as noexcept is important.
 	Variant &operator=(Variant &&other) SPIRV_CROSS_NOEXCEPT

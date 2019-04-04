@@ -27,12 +27,7 @@ ParsedIR::ParsedIR()
 {
 	// If we move ParsedIR, we need to make sure the pointer stays fixed since the child Variant objects consume a pointer to this group,
 	// so need an extra pointer here.
-
-	// FIXME: Using a shared pointer here allows us to have default copy construction, however,
-	// we now have a hazard if the same ParsedIR object is copied into multiple Compilers and those compilers then run in parallel.
-	// This shouldn't really be a thing, but we should have a way to avoid this scenario.
-	// A custom copy-constructor for ParsedIR is the solution here.
-	pool_group = make_shared<ObjectPoolGroup>();
+	pool_group.reset(new ObjectPoolGroup);
 
 	pool_group->pools[TypeType].reset(new ObjectPool<SPIRType>);
 	pool_group->pools[TypeVariable].reset(new ObjectPool<SPIRVariable>);
@@ -46,6 +41,44 @@ ParsedIR::ParsedIR()
 	pool_group->pools[TypeCombinedImageSampler].reset(new ObjectPool<SPIRCombinedImageSampler>);
 	pool_group->pools[TypeAccessChain].reset(new ObjectPool<SPIRAccessChain>);
 	pool_group->pools[TypeUndef].reset(new ObjectPool<SPIRUndef>);
+}
+
+ParsedIR::ParsedIR(const ParsedIR &other)
+	: ParsedIR()
+{
+	*this = other;
+}
+
+ParsedIR &ParsedIR::operator=(const ParsedIR &other)
+{
+	if (this != &other)
+	{
+		spirv = other.spirv;
+		meta = other.meta;
+		for (int i = 0; i < TypeCount; i++)
+			ids_for_type[i] = other.ids_for_type[i];
+		ids_for_constant_or_type = other.ids_for_constant_or_type;
+		ids_for_constant_or_variable = other.ids_for_constant_or_variable;
+		declared_capabilities = other.declared_capabilities;
+		declared_extensions = other.declared_extensions;
+		block_meta = other.block_meta;
+		continue_block_to_loop_header = other.continue_block_to_loop_header;
+		entry_points = other.entry_points;
+		default_entry_point = other.default_entry_point;
+		source = other.source;
+		loop_iteration_depth = other.loop_iteration_depth;
+
+		// Very deliberate copying of IDs. There is no default copy constructor, nor a simple default constructor.
+		// Construct object first so we have the correct allocator set-up, then we can copy object into our new pool group.
+		ids.clear();
+		ids.reserve(other.ids.size());
+		for (size_t i = 0; i < other.ids.size(); i++)
+		{
+			ids.emplace_back(pool_group.get());
+			ids.back() = other.ids[i];
+		}
+	}
+	return *this;
 }
 
 void ParsedIR::set_id_bounds(uint32_t bounds)
