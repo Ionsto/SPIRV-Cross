@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <new>
 #include <stack>
 #include <stdexcept>
 #include <stdint.h>
@@ -33,6 +34,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 // A bit crude, but allows projects which embed SPIRV-Cross statically to
 // effectively hide all the symbols from other projects.
@@ -104,329 +106,160 @@ public:
 #define SPIRV_CROSS_DEPRECATED(reason)
 #endif
 
-// std::aligned_storage does not support size == 0, so roll our own.
-template <typename T, size_t N>
-class AlignedBuffer
+// We're never going to use more than 64k inline bytes, so save some inline space ...
+// Not really important if the object is stored on stack, but nested inside a container it might be meaningful.
+struct InlineArena
 {
-public:
-	T *data()
-	{
-		return reinterpret_cast<T *>(aligned_char);
-	}
-
-private:
-	alignas(T) char aligned_char[sizeof(T) * N];
+	uint8_t *base = nullptr;
+	uint16_t offset = 0;
+	uint16_t total = 0;
 };
 
-template <typename T>
-class AlignedBuffer<T, 0>
+template <typename T, size_t Size>
+class InlineAllocator
 {
 public:
-	T *data()
-	{
-		return nullptr;
-	}
-};
+	static_assert(Size <= 0xffff, "InlineAllocator size must fit in 16 bits.");
+	using value_type = T;
+	using size_type = size_t;
 
-// An immutable version of SmallVector which erases type information about storage.
-template <typename T>
-class VectorView
-{
-public:
-	T &operator[](size_t i)
+	template <typename U>
+	struct rebind { using other = InlineAllocator<U, Size>; };
+
+	InlineAllocator() noexcept
+		: arena(inline_arena)
 	{
-		return ptr[i];
+		inline_arena.base = aligned_payload;
 	}
 
-	const T &operator[](size_t i) const
+	// There must be something deeply flawed about this scheme of overloads ...
+
+	// This is used by std::unordered_map and the like to allocate misc types.
+	// We have no choice but to inherit the reference from the other arena, and reuse that.
+	// At least we have an lvalue we're binding to here, so, we shouldn't risk "other" being destroyed before us.
+	template <typename U>
+	InlineAllocator(InlineAllocator<U, Size> &other) noexcept
+		: arena(other.get_inline_area())
 	{
-		return ptr[i];
 	}
 
-	bool empty() const
+	InlineAllocator(InlineAllocator &other) noexcept
+		: arena(other.get_inline_area())
 	{
-		return buffer_size == 0;
 	}
 
-	size_t size() const
+	// These happen to be thrown around during construction using the default allocator
+	// argument to std::vector and friends.
+	// There should not be anything to propagate.
+	// FIXME: Verify if this actually works.
+	// All the other stack allocators I've seen are broken in that they blindly
+	// propagate the arena to other allocators without considering if the allocators
+	// will actually be alive on the stack when this new allocator is used.
+	// We might be able to get away with this by making wrapper classes
+	// which explicitly have an allocator instance separately from the data structure,
+	// and then we then pass down the allocators explicitly.
+
+	template <typename U>
+	InlineAllocator(const InlineAllocator<U, Size> &) noexcept
+		: InlineAllocator()
 	{
-		return buffer_size;
 	}
 
-	T *data()
+	InlineAllocator(const InlineAllocator &) noexcept
+		: InlineAllocator()
 	{
-		return ptr;
 	}
 
-	const T *data() const
+	// Assigned from a temporary, definitely don't inherit anything since the stack might wink out.
+	template <typename U>
+	InlineAllocator(InlineAllocator<U, Size> &&) noexcept
+		: InlineAllocator()
 	{
-		return ptr;
 	}
 
-	T *begin()
+	InlineAllocator(InlineAllocator &&) noexcept
+		: InlineAllocator()
 	{
-		return ptr;
 	}
 
-	T *end()
+	void operator=(const InlineAllocator &) = delete;
+	void operator=(InlineAllocator &&) = delete;
+
+	bool operator==(const InlineAllocator &other) noexcept
 	{
-		return ptr + buffer_size;
+		// If neither allocator has anything on stack,
+		// these allocator instances should be considered equivalent.
+		// This is used for move operations. If we have any allocated data on stack, we cannot directly move,
+		// we must move elements individually instead since we cannot just re-seat the internal pointer.
+		return this == &other || (arena.total == 0 && other.arena.total == 0);
 	}
 
-	const T *begin() const
+	bool operator!=(const InlineAllocator &other) noexcept
 	{
-		return ptr;
+		return !(*this == other);
 	}
 
-	const T *end() const
+	T *allocate(size_t n)
 	{
-		return ptr + buffer_size;
-	}
-
-	T &front()
-	{
-		return ptr[0];
-	}
-
-	const T &front() const
-	{
-		return ptr[0];
-	}
-
-	T &back()
-	{
-		return ptr[buffer_size - 1];
-	}
-
-	const T &back() const
-	{
-		return ptr[buffer_size - 1];
-	}
-
-	// Avoid sliced copies. Base class should only be read as a reference.
-	VectorView(const VectorView &) = delete;
-	void operator=(const VectorView &) = delete;
-
-protected:
-	VectorView() = default;
-	T *ptr = nullptr;
-	size_t buffer_size = 0;
-};
-
-// Simple vector which supports up to N elements inline, without malloc/free.
-// We use a lot of throwaway vectors all over the place which triggers allocations.
-// This class only implements the subset of std::vector we need in SPIRV-Cross.
-// It is *NOT* a drop-in replacement.
-template <typename T, size_t N = 8>
-class SmallVector : public VectorView<T>
-{
-public:
-	SmallVector()
-	{
-		this->ptr = stack_storage.data();
-		buffer_capacity = N;
-	}
-
-	SmallVector(const T *arg_list_begin, const T *arg_list_end)
-	    : SmallVector()
-	{
-		auto count = size_t(arg_list_end - arg_list_begin);
-		reserve(count);
-		for (size_t i = 0; i < count; i++, arg_list_begin++)
-			new (&this->ptr[i]) T(*arg_list_begin);
-		this->buffer_size = count;
-	}
-
-	SmallVector(SmallVector &&other) SPIRV_CROSS_NOEXCEPT : SmallVector()
-	{
-		*this = std::move(other);
-	}
-
-	SmallVector &operator=(SmallVector &&other) SPIRV_CROSS_NOEXCEPT
-	{
-		clear();
-		if (other.ptr != other.stack_storage.data())
+		size_t required_size = n * sizeof(T);
+		size_t aligned_offset = alignup(arena.offset, alignof(T));
+		if (aligned_offset + required_size <= Size)
 		{
-			// Pilfer allocated pointer.
-			if (this->ptr != stack_storage.data())
-				free(this->ptr);
-			this->ptr = other.ptr;
-			this->buffer_size = other.buffer_size;
-			buffer_capacity = other.buffer_capacity;
-			other.ptr = nullptr;
-			other.buffer_size = 0;
-			other.buffer_capacity = 0;
+			T *ret = reinterpret_cast<T *>(arena.base + aligned_offset);
+			arena.offset = aligned_offset + required_size;
+			arena.total += required_size;
+			return ret;
+		}
+		else
+			return reinterpret_cast<T *>(::operator new(required_size));
+	}
+
+	void deallocate(T *ptr, size_type n)
+	{
+		if (pointer_is_stack(ptr))
+		{
+			size_t required_size = n * sizeof(T);
+			if (reinterpret_cast<uint8_t *>(ptr) + required_size == arena.base + arena.offset)
+				arena.offset -= required_size;
+			arena.total -= required_size;
+			if (arena.total == 0)
+				arena.offset = 0;
 		}
 		else
 		{
-			// Need to move the stack contents individually.
-			reserve(other.buffer_size);
-			for (size_t i = 0; i < other.buffer_size; i++)
-			{
-				new (&this->ptr[i]) T(std::move(other.ptr[i]));
-				other.ptr[i].~T();
-			}
-			this->buffer_size = other.buffer_size;
-			other.buffer_size = 0;
-		}
-		return *this;
-	}
-
-	SmallVector(const SmallVector &other)
-	    : SmallVector()
-	{
-		*this = other;
-	}
-
-	SmallVector &operator=(const SmallVector &other)
-	{
-		clear();
-		reserve(other.buffer_size);
-		for (size_t i = 0; i < other.buffer_size; i++)
-			new (&this->ptr[i]) T(other.ptr[i]);
-		this->buffer_size = other.buffer_size;
-		return *this;
-	}
-
-	explicit SmallVector(size_t count)
-	    : SmallVector()
-	{
-		resize(count);
-	}
-
-	~SmallVector()
-	{
-		clear();
-		if (this->ptr != stack_storage.data())
-			free(this->ptr);
-	}
-
-	void clear()
-	{
-		for (size_t i = 0; i < this->buffer_size; i++)
-			this->ptr[i].~T();
-		this->buffer_size = 0;
-	}
-
-	void push_back(const T &t)
-	{
-		reserve(this->buffer_size + 1);
-		new (&this->ptr[this->buffer_size]) T(t);
-		this->buffer_size++;
-	}
-
-	void push_back(T &&t)
-	{
-		reserve(this->buffer_size + 1);
-		new (&this->ptr[this->buffer_size]) T(std::move(t));
-		this->buffer_size++;
-	}
-
-	void pop_back()
-	{
-		resize(this->buffer_size - 1);
-	}
-
-	template <typename... Ts>
-	void emplace_back(Ts &&... ts)
-	{
-		reserve(this->buffer_size + 1);
-		new (&this->ptr[this->buffer_size]) T(std::forward<Ts>(ts)...);
-		this->buffer_size++;
-	}
-
-	void reserve(size_t count)
-	{
-		if (count > buffer_capacity)
-		{
-			size_t target_capacity = buffer_capacity;
-			if (target_capacity == 0)
-				target_capacity = 1;
-			if (target_capacity < N)
-				target_capacity = N;
-
-			while (target_capacity < count)
-				target_capacity <<= 1u;
-
-			T *new_buffer =
-			    target_capacity > N ? static_cast<T *>(malloc(target_capacity * sizeof(T))) : stack_storage.data();
-
-			if (!new_buffer)
-				SPIRV_CROSS_THROW("Out of memory.");
-
-			// In case for some reason two allocations both come from same stack.
-			if (new_buffer != this->ptr)
-			{
-				// We don't deal with types which can throw in move constructor.
-				for (size_t i = 0; i < this->buffer_size; i++)
-				{
-					new (&new_buffer[i]) T(std::move(this->ptr[i]));
-					this->ptr[i].~T();
-				}
-			}
-
-			if (this->ptr != stack_storage.data())
-				free(this->ptr);
-			this->ptr = new_buffer;
-			buffer_capacity = target_capacity;
+			::operator delete(ptr);
 		}
 	}
 
-	void insert(T *itr, const T *insert_begin, const T *insert_end)
+	InlineArena &get_inline_area() const noexcept
 	{
-		if (itr == this->end())
-		{
-			auto count = size_t(insert_end - insert_begin);
-			reserve(this->buffer_size + count);
-			for (size_t i = 0; i < count; i++, insert_begin++)
-				new (&this->ptr[this->buffer_size + i]) T(*insert_begin);
-			this->buffer_size += count;
-		}
-		else
-			SPIRV_CROSS_THROW("Mid-insert not implemented.");
-	}
-
-	T *erase(T *itr)
-	{
-		std::move(itr + 1, this->end(), itr);
-		this->ptr[--this->buffer_size].~T();
-		return itr;
-	}
-
-	void erase(T *start_erase, T *end_erase)
-	{
-		if (end_erase != this->end())
-			SPIRV_CROSS_THROW("Mid-erase not implemented.");
-		resize(size_t(start_erase - this->begin()));
-	}
-
-	void resize(size_t new_size)
-	{
-		if (new_size < this->buffer_size)
-		{
-			for (size_t i = new_size; i < this->buffer_size; i++)
-				this->ptr[i].~T();
-		}
-		else if (new_size > this->buffer_size)
-		{
-			reserve(new_size);
-			for (size_t i = this->buffer_size; i < new_size; i++)
-				new (&this->ptr[i]) T();
-		}
-
-		this->buffer_size = new_size;
+		return arena;
 	}
 
 private:
-	size_t buffer_capacity = 0;
-	AlignedBuffer<T, N> stack_storage;
+	alignas(max_align_t) uint8_t aligned_payload[Size];
+	InlineArena inline_arena;
+	InlineArena &arena;
+
+	bool pointer_is_stack(const void *ptr_) const noexcept
+	{
+		uintptr_t ptr = reinterpret_cast<uintptr_t>(ptr_);
+		uintptr_t stack_base = reinterpret_cast<uintptr_t>(arena.base);
+		return (ptr >= stack_base) && (ptr < stack_base + Size);
+	}
+
+	size_t alignup(uint16_t offset, size_t align) noexcept
+	{
+		return (offset + align - 1) & ~(align - 1);
+	}
 };
+
+template <typename T>
+using SmallVector = std::vector<T, InlineAllocator<T, 8 * sizeof(T)>>;
 
 // A vector without stack storage.
-// Could also be a typedef-ed to std::vector,
-// but might as well use the one we have.
 template <typename T>
-using Vector = SmallVector<T, 0>;
+using Vector = std::vector<T>;
 
 // An object pool which we use for allocating IVariant-derived objects.
 // We know we are going to allocate a bunch of objects of each type,

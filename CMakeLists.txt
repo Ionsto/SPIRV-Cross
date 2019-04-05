@@ -418,8 +418,15 @@ if (SPIRV_CROSS_CLI)
 				if (CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
 					target_compile_options(spirv-cross-c-api-test PRIVATE -std=c89 -Wall -Wextra)
 				endif()
+
+				add_executable(spirv-cross-allocators-test tests-other/allocators_test.cpp)
+				target_link_libraries(spirv-cross-allocators-test PRIVATE spirv-cross-core)
+				set_target_properties(spirv-cross-allocators-test PROPERTIES LINK_FLAGS "${spirv-cross-link-flags}")
+
 				add_test(NAME spirv-cross-c-api-test
 						COMMAND $<TARGET_FILE:spirv-cross-c-api-test> ${CMAKE_CURRENT_SOURCE_DIR}/tests-other/c_api_test.spv)
+				#add_test(NAME spirv-cross-allocators-test
+				#		COMMAND $<TARGET_FILE:spirv-cross-allocators-test>)
 				add_test(NAME spirv-cross-test
 						COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_shaders.py --parallel
 						${spirv-cross-externals}
